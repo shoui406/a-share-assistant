@@ -32,6 +32,10 @@ def dataframe_to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
+def clean_df(df: pd.DataFrame) -> list[dict[str, Any]]:
+    return dataframe_to_records(df)
+
+
 def normalize_a_share_symbol(symbol: str) -> str:
     if symbol.startswith(("sh", "sz", "bj")):
         return symbol
@@ -43,17 +47,30 @@ def normalize_a_share_symbol(symbol: str) -> str:
 
 
 @app.get("/a-share/spot")
-def get_a_share_spot() -> dict[str, Any]:
+def a_share_spot(limit: int = Query(20, ge=1, le=100)):
     try:
         df = ak.stock_zh_a_spot_em()
-    except Exception:
-        try:
-            # Fallback to the legacy spot interface when the EM source is unstable.
-            df = ak.stock_zh_a_spot()
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"AKShare spot request failed: {exc}") from exc
 
-    return {"count": len(df), "items": dataframe_to_records(df)}
+        keep_cols = [
+            "代码",
+            "名称",
+            "最新价",
+            "涨跌幅",
+            "涨跌额",
+            "成交量",
+            "成交额",
+            "换手率",
+            "市盈率-动态",
+        ]
+        cols = [c for c in keep_cols if c in df.columns]
+        df = df[cols].head(limit)
+
+        return {
+            "count": len(df),
+            "items": clean_df(df),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"spot error: {str(e)}")
 
 
 @app.get("/a-share/hist")
